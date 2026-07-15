@@ -29,7 +29,7 @@ include_directories(include)
 
 
 # add the subscriber example
-add_executable(tape_detection_node src/subscriber_detection.cpp)
+add_executable(tape_detection_node src/tape_detection.cpp)
 target_link_libraries(tape_detection_node
  cv_bridge::cv_bridge
  image_transport::image_transport
