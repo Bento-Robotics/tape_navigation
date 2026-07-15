@@ -18,13 +18,60 @@ class TapeDetection : public rclcpp::Node
 private:
   std::shared_ptr<image_transport::ImageTransport> it_;
   std::shared_ptr<image_transport::Subscriber> image_sub_;
-  cv::Scalar lower_blue;
-  cv::Scalar upper_blue;
+  cv::Scalar min_hsv;
+  cv::Scalar max_hsv;
 
   State state = none;
 
+private:
+  // https://stackoverflow.com/questions/8636689/opencv-trackbar-callback-in-c-class
+  static void hue_max_slider_callback(int slider, void *object)
+  {
+    auto td = static_cast<TapeDetection *>(object);
+    td->max_hsv[0] = slider;
+  }
+  static void saturation_max_slider_callback(int slider, void *object)
+  {
+    auto td = static_cast<TapeDetection *>(object);
+    td->max_hsv[1] = slider;
+  }
+  static void value_max_slider_callback(int slider, void *object)
+  {
+    auto td = static_cast<TapeDetection *>(object);
+    td->max_hsv[2] = slider;
+  }
+  static void hue_min_slider_callback(int slider, void *object)
+  {
+    auto td = static_cast<TapeDetection *>(object);
+    td->min_hsv[0] = slider;
+  }
+  static void saturation_min_slider_callback(int slider, void *object)
+  {
+    auto td = static_cast<TapeDetection *>(object);
+    td->min_hsv[1] = slider;
+  }
+  static void value_min_slider_callback(int slider, void *object)
+  {
+    auto td = static_cast<TapeDetection *>(object);
+    td->min_hsv[2] = slider;
+  }
+
+  void update_hsv()
+  {
+    cv::setTrackbarPos("Hue_min", "view", min_hsv[0]);
+    cv::setTrackbarPos("Hue_max", "view", max_hsv[0]);
+    cv::setTrackbarPos("Saturation_min", "view", min_hsv[1]);
+    cv::setTrackbarPos("Saturation_max", "view", max_hsv[1]);
+    cv::setTrackbarPos("Value_min", "view", min_hsv[2]);
+    cv::setTrackbarPos("Value_max", "view", max_hsv[2]);
+
+    // this->set_parameter(rclcpp::Parameter("test", {min_hsv[0], min_hsv[1], min_hsv[2]}))
+    // this->declare_parameter<std::vector<int>>("test", {min_hsv[0], min_hsv[1], min_hsv[2]});
+  }
+
   void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
   {
+    update_hsv();
     try
     {
       cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
@@ -46,11 +93,11 @@ private:
       // https://pseudopencv.site/utilities/hsvcolormask/
       // cv::Scalar lower_blue(90, 35, 140);
 
-      cv::inRange(hsvimg, lower_blue, upper_blue, blue_mask);
+      cv::inRange(hsvimg, min_hsv, max_hsv, blue_mask);
       cv::bitwise_and(img, img, out, blue_mask);
 
-      cv::rectangle(out, cv::Point(0, 0), cv::Point(30, 30), ScalarHSV2RGB(upper_blue), cv::FILLED);
-      cv::rectangle(out, cv::Point(30, 0), cv::Point(60, 30), ScalarHSV2RGB(lower_blue), cv::FILLED);
+      cv::rectangle(out, cv::Point(0, 0), cv::Point(30, 30), ScalarHSV2RGB(max_hsv), cv::FILLED);
+      cv::rectangle(out, cv::Point(30, 0), cv::Point(60, 30), ScalarHSV2RGB(min_hsv), cv::FILLED);
 
       // Display result
       cv::imshow("view", out);
@@ -68,10 +115,14 @@ public:
   {
     // TransportHints does not actually declare the parameter
     this->declare_parameter<std::string>("image_transport", "raw");
-    this->declare_parameter<std::vector<uint8_t>>("lower_blue", {90, 50, 100});
+    this->declare_parameter<std::vector<int>>("min_hsv", {90, 50, 100});
+    this->declare_parameter<std::vector<int>>("max_hsv", {153, 255, 255});
+    this->declare_parameter<std::vector<int>>("test", {0, 0, 0});
 
-    this->lower_blue = cv::Scalar(90, 50, 100);
-    this->upper_blue = cv::Scalar(153, 255, 255);
+    auto min_array = this->get_parameter("min_hsv").as_integer_array();
+    min_hsv = cv::Scalar(min_array[0], min_array[1], min_array[2]);
+    auto max_array = this->get_parameter("max_hsv").as_integer_array();
+    max_hsv = cv::Scalar(max_array[0], max_array[1], max_array[2]);
   }
 
   void InitializeImageTransport()
@@ -83,13 +134,15 @@ public:
     // image_transport::TransportHints hints(this.get());
     image_sub_ = std::make_shared<image_transport::Subscriber>(it_->subscribe("camera/image_raw", 1, std::bind(&TapeDetection::image_callback, this, std::placeholders::_1)));
 
-    cv::namedWindow("view");
+    cv::namedWindow("view", cv::WINDOW_NORMAL);
     cv::startWindowThread();
 
-    auto onHueChange = [](int, void *) {
-      
-    };
-    cv::createTrackbar("Hue", "view", 0, 255, onHueChange);
+    cv::createTrackbar("Hue_min", "view", 0, 180, &TapeDetection::hue_min_slider_callback, this);
+    cv::createTrackbar("Saturation_min", "view", 0, 255, &TapeDetection::saturation_min_slider_callback, this);
+    cv::createTrackbar("Value_min", "view", 0, 255, &TapeDetection::value_min_slider_callback, this);
+    cv::createTrackbar("Hue_max", "view", 0, 180, &TapeDetection::hue_max_slider_callback, this);
+    cv::createTrackbar("Saturation_max", "view", 0, 255, &TapeDetection::saturation_max_slider_callback, this);
+    cv::createTrackbar("Value_max", "view", 0, 255, &TapeDetection::value_max_slider_callback, this);
   }
 
   ~TapeDetection()
