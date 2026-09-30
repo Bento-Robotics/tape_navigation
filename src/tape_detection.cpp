@@ -69,6 +69,17 @@ private:
     // this->declare_parameter<std::vector<int>>("test", {min_hsv[0], min_hsv[1], min_hsv[2]});
   }
 
+  double angle(cv::Point pt1, cv::Point pt2, cv::Point pt0)
+  {
+    double dx1 = pt1.x - pt0.x;
+    double dy1 = pt1.y - pt0.y;
+    double dx2 = pt2.x - pt0.x;
+    double dy2 = pt2.y - pt0.y;
+    double bleh = atan(dy1 / dx1) - atan(dy2 / dx2);
+    // std::cout << bleh << std::endl;
+    return bleh;
+  }
+
   void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
   {
     update_hsv();
@@ -88,19 +99,60 @@ private:
       // cv::Mat gradient_abs;
       // cv::convertScaleAbs(gradient, gradient_abs);
 
-      cv::Mat out, hsvimg, blue_mask;
+      cv::Mat out, hsvimg, hsv_mask;
+
+      // convert to HSV
       cv::cvtColor(img, hsvimg, cv::COLOR_BGR2HSV);
       // https://pseudopencv.site/utilities/hsvcolormask/
-      // cv::Scalar lower_blue(90, 35, 140);
 
-      cv::inRange(hsvimg, min_hsv, max_hsv, blue_mask);
-      cv::bitwise_and(img, img, out, blue_mask);
+      // get binary mask of values in HSV range
+      cv::inRange(hsvimg, min_hsv, max_hsv, hsv_mask);
+      // apply mask to color picture
+      cv::bitwise_and(img, img, out, hsv_mask);
 
       cv::rectangle(out, cv::Point(0, 0), cv::Point(30, 30), ScalarHSV2RGB(max_hsv), cv::FILLED);
       cv::rectangle(out, cv::Point(30, 0), cv::Point(60, 30), ScalarHSV2RGB(min_hsv), cv::FILLED);
 
       // Display result
       cv::imshow("view", out);
+      cv::waitKey(10);
+
+      // detect contours
+      cv::Mat gray;
+      std::vector<std::vector<cv::Point>> contours;
+      cv::Canny(hsv_mask, gray, 50, 150, 3);
+      findContours(hsv_mask, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
+      cv::imshow("canny", gray);
+
+      // approxPolyDP and filter the contours
+      std::vector<std::vector<cv::Point>> rects;
+      std::vector<cv::Point> approx;
+      for (unsigned int i = 0; i < contours.size(); i++)
+      {
+        cv::approxPolyDP(cv::Mat(contours[i]), approx, cv::arcLength(cv::Mat(contours.at(i)), true) * 0.02, true);
+
+        if (approx.size() == 4)
+        {
+          double maxCosine = 0;
+
+          for (int j = 2; j <= 4; j++)
+          {
+            double cosine = fabs(cos(angle(approx[j % 4], approx[j - 2], approx[j - 1])));
+            maxCosine = MAX(maxCosine, cosine);
+          }
+
+          if (maxCosine < 0.3)
+            rects.push_back(approx);
+        }
+      }
+
+      // draw contours
+      std::vector<cv::Vec4i> hierarchy;
+      for (unsigned int i = 0; i < rects.size(); i++)
+        cv::drawContours(img, rects, i, cv::Scalar(0, 255, 0), 2, 8, hierarchy, 0, cv::Point());
+
+      // show the image
+      cv::imshow("rectangles", img);
       cv::waitKey(10);
     }
     catch (const cv_bridge::Exception &e)
