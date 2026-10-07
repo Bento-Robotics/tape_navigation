@@ -110,8 +110,15 @@ private:
       // apply mask to color picture
       cv::bitwise_and(img, img, out, hsv_mask);
 
-      cv::rectangle(out, cv::Point(0, 0), cv::Point(30, 30), ScalarHSV2RGB(max_hsv), cv::FILLED);
-      cv::rectangle(out, cv::Point(30, 0), cv::Point(60, 30), ScalarHSV2RGB(min_hsv), cv::FILLED);
+      // 20px box - 60px lines gradient - 20px box
+      const uint box1 = 10, grad = 80, box2 = 10, height = 30;
+      cv::rectangle(out, cv::Point(0, 0), cv::Point(box1, height), ScalarHSV2RGB(max_hsv), cv::FILLED);
+      cv::rectangle(out, cv::Point(box1 + grad, 0), cv::Point(box1 + grad + box2, height), ScalarHSV2RGB(min_hsv), cv::FILLED);
+      cv::Scalar hsv_diff = (max_hsv - min_hsv) / cv::Scalar(grad, grad, grad);
+      for (uint i = 0; i < grad; i++)
+      {
+        cv::line(out, cv::Point(box1 + i, 0), cv::Point(box1 + i, height), ScalarHSV2RGB(min_hsv + (hsv_diff * cv::Scalar(grad - i, grad - i, grad - i))), 1);
+      }
 
       // Display result
       cv::imshow("view", out);
